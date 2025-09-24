@@ -1,0 +1,650 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>3D Тир з Змінним Прицілом (Mobile)</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        html, body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            width: 100vw;
+            height: 100vh;
+            font-family: 'Inter', sans-serif;
+            background-color: #0d1117;
+            color: #fff;
+            touch-action: none;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        #game-canvas-container {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+        }
+        canvas {
+            display: block;
+            width: 100vw !important;
+            height: 100vh !important;
+            touch-action: none;
+        }
+        .ui-container {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100vw;
+            height: 100vh;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: space-between;
+            padding: 2vw;
+        }
+        .stats-top {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: space-between;
+            width: 100vw;
+            font-size: 1.2rem;
+            font-weight: bold;
+            padding: 8px;
+            background: rgba(0,0,0,0.3);
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+            pointer-events: none;
+        }
+        .mobile-btn-group {
+            position: absolute;
+            bottom: 2vw;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 4vw;
+            pointer-events: all;
+            z-index: 10;
+        }
+        .mobile-btn {
+            padding: 12px 18px;
+            background: #238636;
+            color: #fff;
+            border: none;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: bold;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+            transition: background 0.2s;
+            min-width: 48px;
+        }
+        .mobile-btn:active {
+            background: #2ea043;
+        }
+        .crosshair {
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%,-50%);
+            width: 40px; height: 4px;
+            background: #fff;
+            box-shadow: 0 0 8px #fff;
+            pointer-events: none;
+        }
+        .crosshair::before {
+            content: '';
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%,-50%);
+            width: 4px; height: 40px;
+            background: #fff;
+        }
+        .aiming-crosshair {
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%,-50%);
+            width: 90px; height: 90px;
+            border: 2px solid rgba(255,255,255,0.8);
+            border-radius: 50%;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+        .aiming-crosshair::before,
+        .aiming-crosshair::after {
+            content: '';
+            position: absolute;
+            background: rgba(255,255,255,0.8);
+        }
+        .aiming-crosshair::before {
+            top: 50%; left: 0;
+            width: 100%; height: 2px;
+            transform: translateY(-50%);
+        }
+        .aiming-crosshair::after {
+            top: 0; left: 50%;
+            width: 2px; height: 100%;
+            transform: translateX(-50%);
+        }
+        .message-box {
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%,-50%);
+            background: rgba(22,27,34,0.97);
+            border: 2px solid #238636;
+            border-radius: 10px;
+            padding: 30px 20px;
+            text-align: center;
+            z-index: 100;
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            gap: 16px;
+            min-width: 220px;
+            box-shadow: 0 0 18px rgba(35,134,54,0.7);
+            animation: fadeIn 0.3s ease-in-out;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        .message-box h2 { font-size: 1.5rem; font-weight: bold; color: #238636; }
+        .message-box p { font-size: 1rem; font-weight: 300; }
+        .message-box button {
+            background: #238636;
+            color: #fff;
+            font-size: 1rem;
+            font-weight: bold;
+            border-radius: 8px;
+            padding: 10px 22px;
+            margin-top: 10px;
+        }
+        .message-box button:active { background: #2ea043; }
+    </style>
+</head>
+<body>
+    <div id="game-canvas-container"></div>
+    <div class="ui-container">
+        <div class="stats-top">
+            <span id="score-display">Рахунок: 0</span>
+            <span id="ammo-display">Набої: ∞</span>
+            <span id="mode-display">Режим: Одиночний</span>
+            <span id="silencer-display">Глушник: Ні</span>
+            <span id="zoom-display" style="opacity: 0;">Зум: 1x</span>
+        </div>
+        <div id="normal-crosshair" class="crosshair"></div>
+        <div id="aiming-crosshair" class="aiming-crosshair"></div>
+        <div class="mobile-btn-group">
+            <button id="fire-btn" class="mobile-btn">Вогонь</button>
+            <button id="aim-btn" class="mobile-btn">Приціл</button>
+            <button id="mode-btn" class="mobile-btn">Режим</button>
+            <button id="silencer-btn" class="mobile-btn">Глушник</button>
+            <button id="pause-btn" class="mobile-btn">Пауза</button>
+            <button id="zoom-in-btn" class="mobile-btn">+</button>
+            <button id="zoom-out-btn" class="mobile-btn">-</button>
+        </div>
+    </div>
+    <div id="messageBox" class="message-box">
+        <h2 id="message-title"></h2>
+        <p id="message-text"></p>
+        <button id="startButton">Почати гру</button>
+    </div>
+    <script>
+        // --- Game Variables ---
+        let scene, camera, renderer;
+        let score = 0;
+        let isGameRunning = false;
+        let isAiming = false;
+        let isPaused = false;
+        let normalFov;
+        let currentZoom = 1;
+        const maxZoom = 8;
+        const minZoom = 1;
+        let targets = [];
+        let explodingTargets = [];
+        const maxTargetCount = 5;
+        const spawnInterval = 2000;
+        let lastSpawnTime = 0;
+        const targetSpawnPositions = [
+            new THREE.Vector3(0, 1.5, -10),
+            new THREE.Vector3(4, 1.5, -10),
+            new THREE.Vector3(-4, 1.5, -10),
+            new THREE.Vector3(0, 3.5, -10),
+            new THREE.Vector3(3, 3.5, -10),
+            new THREE.Vector3(-3, 3.5, -10),
+            new THREE.Vector3(0, 1.5, -15),
+            new THREE.Vector3(4, 1.5, -15),
+            new THREE.Vector3(-4, 1.5, -15),
+            new THREE.Vector3(0, 3.5, -15),
+        ];
+        let firingMode = 'single';
+        const fireRate = 170;
+        let lastFireTime = 0;
+        let silencer;
+        let isSilencerEquipped = false;
+        let muzzleFlashLight;
+
+        // --- Touch Variables ---
+        let startX, startY, lastX, lastY, touchInitialDist = null;
+        let isTouchAiming = false, isTouchFiring = false;
+        let keys = {}; // Not used on mobile
+
+        // --- UI Elements ---
+        const messageBox = document.getElementById('messageBox');
+        const messageTitle = document.getElementById('message-title');
+        const messageText = document.getElementById('message-text');
+        const actionButton = document.getElementById('startButton');
+        const scoreDisplay = document.getElementById('score-display');
+        const ammoDisplay = document.getElementById('ammo-display');
+        const modeDisplay = document.getElementById('mode-display');
+        const silencerDisplay = document.getElementById('silencer-display');
+        const zoomDisplay = document.getElementById('zoom-display');
+        const normalCrosshair = document.getElementById('normal-crosshair');
+        const aimingCrosshair = document.getElementById('aiming-crosshair');
+        // Mobile buttons
+        const fireBtn = document.getElementById('fire-btn');
+        const aimBtn = document.getElementById('aim-btn');
+        const modeBtn = document.getElementById('mode-btn');
+        const silencerBtn = document.getElementById('silencer-btn');
+        const pauseBtn = document.getElementById('pause-btn');
+        const zoomInBtn = document.getElementById('zoom-in-btn');
+        const zoomOutBtn = document.getElementById('zoom-out-btn');
+
+        // --- Audio Context ---
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        let audioCtx;
+        try { audioCtx = new AudioContext(); } catch(e) {}
+
+        function createShotSound() {
+            if (!audioCtx) return;
+            const bufferSize = audioCtx.sampleRate * 0.18;
+            const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+            const data = buffer.getChannelData(0);
+            for (let i = 0; i < bufferSize; i++) {
+                data[i] = Math.random() * 2 - 1;
+            }
+            const source = audioCtx.createBufferSource();
+            source.buffer = buffer;
+            const filter = audioCtx.createBiquadFilter();
+            filter.type = 'lowpass';
+            filter.frequency.setValueAtTime(1800, audioCtx.currentTime);
+            const gainNode = audioCtx.createGain();
+            gainNode.gain.setValueAtTime(isSilencerEquipped ? 0.08 : 0.4, audioCtx.currentTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.18);
+            source.connect(filter);
+            filter.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+            source.start(audioCtx.currentTime);
+        }
+
+        function updateUI() {
+            scoreDisplay.textContent = `Рахунок: ${score}`;
+            zoomDisplay.textContent = `Зум: ${currentZoom.toFixed(1)}x`;
+            silencerDisplay.textContent = `Глушник: ${isSilencerEquipped ? 'Так':'Ні'}`;
+            modeDisplay.textContent = `Режим: ${firingMode === 'single' ? 'Одиночний' : 'Автоматичний'}`;
+        }
+        function showInteractiveMessage(title, text, buttonText, buttonAction) {
+            messageTitle.textContent = title;
+            messageText.textContent = text;
+            actionButton.textContent = buttonText;
+            actionButton.style.display = 'block';
+            actionButton.onclick = buttonAction;
+            messageBox.style.display = 'flex';
+        }
+        function showTemporaryMessage(title, text, duration = 1500) {
+            messageTitle.textContent = title;
+            messageText.textContent = text;
+            actionButton.style.display = 'none';
+            messageBox.style.display = 'flex';
+            setTimeout(hideMessage, duration);
+        }
+        function hideMessage() {
+            messageBox.style.display = 'none';
+        }
+
+        // Raycaster for shooting
+        const raycaster = new THREE.Raycaster();
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        // --- Touch camera movement ---
+        function handleTouchStart(e) {
+            if (!isGameRunning || isPaused) return;
+            if (e.touches.length === 1) {
+                startX = lastX = e.touches[0].clientX;
+                startY = lastY = e.touches[0].clientY;
+                isTouchAiming = false;
+                isTouchFiring = false;
+            } else if (e.touches.length === 2) {
+                touchInitialDist = Math.abs(e.touches[0].clientY - e.touches[1].clientY);
+            }
+        }
+        function handleTouchMove(e) {
+            if (!isGameRunning || isPaused) return;
+            if (e.touches.length === 1) {
+                let dx = e.touches[0].clientX - lastX;
+                let dy = e.touches[0].clientY - lastY;
+                lastX = e.touches[0].clientX;
+                lastY = e.touches[0].clientY;
+                const sensitivity = isAiming ? 0.002 / currentZoom : 0.002;
+                camera.rotation.y -= dx * sensitivity;
+                camera.rotation.x -= dy * sensitivity;
+                camera.rotation.x = Math.max(-Math.PI/2, Math.min(Math.PI/2, camera.rotation.x));
+            } else if (e.touches.length === 2) {
+                let dist = Math.abs(e.touches[0].clientY - e.touches[1].clientY);
+                if (touchInitialDist !== null) {
+                    if (dist > touchInitialDist + 10) {
+                        currentZoom = Math.min(maxZoom, currentZoom + 0.5);
+                        touchInitialDist = dist;
+                        camera.fov = normalFov / currentZoom;
+                        camera.updateProjectionMatrix();
+                        updateUI();
+                    } else if (dist < touchInitialDist - 10) {
+                        currentZoom = Math.max(minZoom, currentZoom - 0.5);
+                        touchInitialDist = dist;
+                        camera.fov = normalFov / currentZoom;
+                        camera.updateProjectionMatrix();
+                        updateUI();
+                    }
+                }
+            }
+        }
+        function handleTouchEnd(e) {
+            touchInitialDist = null;
+        }
+
+        // --- Mobile UI Controls ---
+        fireBtn.addEventListener('touchstart', function(e) {
+            e.preventDefault();
+            if (!isGameRunning || isPaused) return;
+            isTouchFiring = true;
+            if (firingMode === 'single') shoot();
+        });
+        fireBtn.addEventListener('touchend', function(e) {
+            e.preventDefault();
+            isTouchFiring = false;
+        });
+
+        aimBtn.addEventListener('touchstart', function(e) {
+            e.preventDefault();
+            if (!isGameRunning || isPaused) return;
+            isAiming = !isAiming;
+            updateAimingState();
+        });
+
+        modeBtn.addEventListener('touchstart', function(e) {
+            e.preventDefault();
+            if (!isGameRunning || isPaused) return;
+            toggleFiringMode();
+        });
+
+        silencerBtn.addEventListener('touchstart', function(e) {
+            e.preventDefault();
+            if (!isGameRunning || isPaused) return;
+            toggleSilencer();
+        });
+
+        pauseBtn.addEventListener('touchstart', function(e) {
+            e.preventDefault();
+            if (!isGameRunning) return;
+            togglePause();
+        });
+
+        zoomInBtn.addEventListener('touchstart', function(e) {
+            e.preventDefault();
+            if (!isGameRunning || isPaused || !isAiming) return;
+            currentZoom = Math.min(maxZoom, currentZoom + 0.5);
+            camera.fov = normalFov / currentZoom;
+            camera.updateProjectionMatrix();
+            updateUI();
+        });
+
+        zoomOutBtn.addEventListener('touchstart', function(e) {
+            e.preventDefault();
+            if (!isGameRunning || isPaused || !isAiming) return;
+            currentZoom = Math.max(minZoom, currentZoom - 0.5);
+            camera.fov = normalFov / currentZoom;
+            camera.updateProjectionMatrix();
+            updateUI();
+        });
+
+        function updateAimingState() {
+            if (isAiming) {
+                camera.fov = normalFov / currentZoom;
+                camera.updateProjectionMatrix();
+                normalCrosshair.style.opacity = 0;
+                aimingCrosshair.style.opacity = 1;
+                zoomDisplay.style.opacity = 1;
+            } else {
+                camera.fov = normalFov;
+                camera.updateProjectionMatrix();
+                normalCrosshair.style.opacity = 1;
+                aimingCrosshair.style.opacity = 0;
+                zoomDisplay.style.opacity = 0;
+            }
+        }
+
+        function shoot() {
+            createShotSound();
+            muzzleFlashLight.visible = true;
+            setTimeout(() => muzzleFlashLight.visible = false, 50);
+            raycaster.setFromCamera(new THREE.Vector2(0,0), camera);
+            const intersects = raycaster.intersectObjects(targets);
+            if (intersects.length > 0) {
+                const hitTarget = intersects[0].object;
+                hitTarget.hitTime = performance.now();
+                score += 10;
+                updateUI();
+                explodingTargets.push(hitTarget);
+                targets = targets.filter(t => t !== hitTarget);
+            }
+        }
+        function toggleFiringMode() {
+            if (firingMode === 'single') {
+                firingMode = 'auto';
+                showTemporaryMessage('Режим', 'Автоматичний');
+            } else {
+                firingMode = 'single';
+                showTemporaryMessage('Режим', 'Одиночний');
+            }
+            updateUI();
+        }
+        function toggleSilencer() {
+            isSilencerEquipped = !isSilencerEquipped;
+            silencer.visible = isSilencerEquipped;
+            showTemporaryMessage('Глушник', isSilencerEquipped ? 'Увімкнено':'Вимкнено');
+            updateUI();
+        }
+        function togglePause() {
+            isPaused = !isPaused;
+            if (isPaused) {
+                showInteractiveMessage('Пауза', 'Натисніть "Пауза" для продовження', 'Продовжити', togglePause);
+            } else {
+                hideMessage();
+                requestAnimationFrame(gameLoop);
+            }
+        }
+
+        function spawnTarget() {
+            const geometry = new THREE.BoxGeometry(1, 1, 0.2);
+            const material = new THREE.MeshPhongMaterial({ color: 0x2ea043 });
+            const target = new THREE.Mesh(geometry, material);
+            const pos = targetSpawnPositions[Math.floor(Math.random() * targetSpawnPositions.length)];
+            target.position.set(pos.x, pos.y, pos.z);
+            targets.push(target);
+            scene.add(target);
+        }
+
+        function gameLoop(timestamp) {
+            if (!isGameRunning || isPaused) return;
+            // Movement: swipe/drag camera only
+            const now = performance.now();
+            if (now - lastSpawnTime > spawnInterval && targets.length + explodingTargets.length < maxTargetCount) {
+                spawnTarget();
+                lastSpawnTime = now;
+            }
+            if ((isTouchFiring || firingMode === 'auto' && isTouchFiring) && now - lastFireTime > fireRate) {
+                shoot();
+                lastFireTime = now;
+            }
+            for (let i = explodingTargets.length - 1; i >= 0; i--) {
+                const target = explodingTargets[i];
+                const elapsedTime = now - target.hitTime;
+                if (elapsedTime > 500) {
+                    scene.remove(target);
+                    explodingTargets.splice(i, 1);
+                } else {
+                    target.scale.setScalar(1 - elapsedTime / 500);
+                    target.material.color.set(0xff0000);
+                }
+            }
+            renderer.render(scene, camera);
+            requestAnimationFrame(gameLoop);
+        }
+
+        function startGame() {
+            hideMessage();
+            score = 0;
+            isGameRunning = true;
+            isAiming = false;
+            isPaused = false;
+            currentZoom = 1;
+            camera.fov = normalFov;
+            camera.updateProjectionMatrix();
+            normalCrosshair.style.opacity = 1;
+            aimingCrosshair.style.opacity = 0;
+            zoomDisplay.style.opacity = 0;
+            targets.forEach(target => scene.remove(target));
+            targets = [];
+            explodingTargets.forEach(target => scene.remove(target));
+            explodingTargets = [];
+            updateUI();
+            lastSpawnTime = performance.now();
+            requestAnimationFrame(gameLoop);
+        }
+
+        function endGame() {
+            isGameRunning = false;
+            showInteractiveMessage('Гра завершена!', `Ваш рахунок: ${score}`, 'Почати гру', startGame);
+        }
+
+        // --- Mobile Range Environment ---
+        function createShootingRange() {
+            const wallMaterial = new THREE.MeshPhongMaterial({ color: 0x1d212a, side: THREE.DoubleSide });
+            const floorMaterial = new THREE.MeshPhongMaterial({ color: 0x161b22, side: THREE.DoubleSide });
+            // Floor
+            const floorGeometry = new THREE.PlaneGeometry(30, 30);
+            const floor = new THREE.Mesh(floorGeometry, floorMaterial);
+            floor.rotation.x = Math.PI / 2;
+            floor.position.y = 0;
+            scene.add(floor);
+            // Back Wall
+            const backWallGeometry = new THREE.PlaneGeometry(30, 15);
+            const backWall = new THREE.Mesh(backWallGeometry, wallMaterial);
+            backWall.position.set(0, 7.5, -25);
+            scene.add(backWall);
+            // Side Walls
+            const sideWallGeometry = new THREE.PlaneGeometry(30, 15);
+            const leftWall = new THREE.Mesh(sideWallGeometry, wallMaterial);
+            leftWall.rotation.y = Math.PI / 2;
+            leftWall.position.set(-15, 7.5, 0);
+            scene.add(leftWall);
+            const rightWall = new THREE.Mesh(sideWallGeometry, wallMaterial);
+            rightWall.rotation.y = -Math.PI / 2;
+            rightWall.position.set(15, 7.5, 0);
+            scene.add(rightWall);
+            // Ceiling
+            const ceilingGeometry = new THREE.PlaneGeometry(30, 30);
+            const ceiling = new THREE.Mesh(ceilingGeometry, wallMaterial);
+            ceiling.rotation.x = -Math.PI / 2;
+            ceiling.position.y = 15;
+            scene.add(ceiling);
+        }
+
+        // --- Weapon M4A1 ---
+        function createWeapon() {
+            const gunGroup = new THREE.Group();
+            const material = new THREE.MeshPhongMaterial({ color: 0x30363d });
+            const blackMaterial = new THREE.MeshPhongMaterial({ color: 0x161b22 });
+            // Receiver
+            const receiverGeometry = new THREE.BoxGeometry(0.15, 0.1, 0.6);
+            const receiver = new THREE.Mesh(receiverGeometry, material);
+            receiver.position.set(0,0,0); gunGroup.add(receiver);
+            // Magazine
+            const magGeometry = new THREE.BoxGeometry(0.08, 0.25, 0.05);
+            const mag = new THREE.Mesh(magGeometry, blackMaterial);
+            mag.position.set(0, -0.15, 0.05); gunGroup.add(mag);
+            // Pistol Grip
+            const gripGeometry = new THREE.BoxGeometry(0.08, 0.15, 0.08);
+            const grip = new THREE.Mesh(gripGeometry, blackMaterial);
+            grip.position.set(0, -0.05, -0.2); grip.rotation.x = -Math.PI/8; gunGroup.add(grip);
+            // Stock
+            const stockGeometry = new THREE.BoxGeometry(0.1, 0.1, 0.4);
+            const stock = new THREE.Mesh(stockGeometry, blackMaterial);
+            stock.position.set(0, 0.02, -0.5); gunGroup.add(stock);
+            // Stock end
+            const stockEndGeometry = new THREE.BoxGeometry(0.15, 0.1, 0.05);
+            const stockEnd = new THREE.Mesh(stockEndGeometry, blackMaterial);
+            stockEnd.position.set(0, 0.05, -0.7); gunGroup.add(stockEnd);
+            // Barrel
+            const barrelGeometry = new THREE.CylinderGeometry(0.015, 0.015, 0.8, 16);
+            const barrel = new THREE.Mesh(barrelGeometry, blackMaterial);
+            barrel.rotation.z = Math.PI/2; barrel.position.set(0, 0.03, 0.4); gunGroup.add(barrel);
+            // Silencer
+            const silencerGeometry = new THREE.CylinderGeometry(0.02, 0.02, 0.25, 16);
+            silencer = new THREE.Mesh(silencerGeometry, blackMaterial);
+            silencer.rotation.z = Math.PI/2; silencer.position.set(0,0.03,0.7);
+            silencer.visible = false; gunGroup.add(silencer);
+            // Handguard
+            const handguardGeometry = new THREE.CylinderGeometry(0.05, 0.05, 0.5, 16);
+            const handguard = new THREE.Mesh(handguardGeometry, material);
+            handguard.rotation.z = Math.PI/2; handguard.position.set(0,0.03,0.3); gunGroup.add(handguard);
+            // Foregrip
+            const foregripGeometry = new THREE.BoxGeometry(0.05, 0.2, 0.05);
+            const foregrip = new THREE.Mesh(foregripGeometry, blackMaterial);
+            foregrip.position.set(0, -0.07, 0.3); gunGroup.add(foregrip);
+            // Muzzle flash light
+            muzzleFlashLight = new THREE.PointLight(0xffcc00, 50, 2);
+            muzzleFlashLight.position.set(0,0.03,0.7); muzzleFlashLight.visible = false; gunGroup.add(muzzleFlashLight);
+            gunGroup.position.set(0.2, -0.3, -0.5);
+            camera.add(gunGroup); scene.add(camera);
+        }
+
+        // --- Init ---
+        function init() {
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x010409);
+            scene.fog = new THREE.Fog(0x0d1117, 10, 100);
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
+            normalFov = camera.fov;
+            camera.position.set(0,1.6,0);
+            renderer = new THREE.WebGLRenderer({antialias:true});
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            document.getElementById('game-canvas-container').appendChild(renderer.domElement);
+            // Lighting
+            scene.add(new THREE.AmbientLight(0x404040,4));
+            const directionalLight = new THREE.DirectionalLight(0xffffff,2);
+            directionalLight.position.set(1,1,1); scene.add(directionalLight);
+            // Environment
+            createShootingRange();
+            createWeapon();
+            // Touch events
+            renderer.domElement.addEventListener('touchstart', handleTouchStart, {passive:false});
+            renderer.domElement.addEventListener('touchmove', handleTouchMove, {passive:false});
+            renderer.domElement.addEventListener('touchend', handleTouchEnd, {passive:false});
+            window.addEventListener('resize', onWindowResize, false);
+            // Prevent context menu
+            window.addEventListener('contextmenu', e => e.preventDefault());
+            updateUI();
+            startGame();
+        }
+        window.onload = init;
+    </script>
+</body>
+</html>
